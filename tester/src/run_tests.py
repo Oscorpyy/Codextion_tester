@@ -331,12 +331,12 @@ class Runner:
         else:
             self._rec(f"{label}: memory errors detected", "FAIL", args_str)
 
-        def _lost(pattern: str) -> int:
+        def parse_valgrind_lost_bytes(pattern: str) -> int:
             m = re.search(pattern, vg_content)
             return int(m.group(1).replace(",", "")) if m else -1
 
-        def_lost = _lost(r'definitely lost:\s+([\d,]+) bytes')
-        ind_lost = _lost(r'indirectly lost:\s+([\d,]+) bytes')
+        def_lost = parse_valgrind_lost_bytes(r'definitely lost:\s+([\d,]+) bytes')
+        ind_lost = parse_valgrind_lost_bytes(r'indirectly lost:\s+([\d,]+) bytes')
 
         if def_lost == 0 and ind_lost == 0:
             self._rec(
