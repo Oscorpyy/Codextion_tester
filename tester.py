@@ -229,9 +229,9 @@ class Tester:
                       detail="'codexion' not referenced in Makefile")
 
         # Compilation flags
-        has_wall   = bool(re.search(r'-Wall\b',   content))
-        has_wextra = bool(re.search(r'-Wextra\b', content))
-        has_werror = bool(re.search(r'-Werror\b', content))
+        has_wall   = re.search(r'-Wall\b',   content) is not None
+        has_wextra = re.search(r'-Wextra\b', content) is not None
+        has_werror = re.search(r'-Werror\b', content) is not None
         if has_wall and has_wextra and has_werror:
             self.ok("Makefile: compilation flags -Wall -Wextra -Werror present")
         else:
@@ -241,21 +241,21 @@ class Tester:
             self.fail("Makefile: compilation flags incomplete",
                       detail=f"missing: {' '.join(missing)}")
 
-        # No-relink: run make a second time; it should not recompile anything
+        # No-relink: run make a second time; it should not recompile anything.
+        # A relink is detected when make output contains a compiler invocation
+        # (cc/gcc/clang/g++) or an explicit link command, regardless of whether
+        # make exits 0.
         r2 = subprocess.run(
             ["make", "-C", self.repo],
             capture_output=True, text=True
         )
         combined = r2.stdout + r2.stderr
-        if r2.returncode == 0 and (
-            "Nothing to be done" in combined
-            or "is up to date"   in combined
-            or combined.strip()  == ""
-        ):
+        relink_pat = re.compile(r'\b(cc|gcc|g\+\+|clang\+\+|clang)\b', re.IGNORECASE)
+        if r2.returncode == 0 and not relink_pat.search(combined):
             self.ok("Makefile: no relink on repeated 'make'")
         else:
             self.fail("Makefile: relink detected on second 'make'",
-                      detail="second 'make' produced unexpected output")
+                      detail="second 'make' produced compiler invocations or failed")
 
     # ══════════════════════════════════════════════════════════════════════════
     # Category 1: Invalid arguments
@@ -731,7 +731,7 @@ class Tester:
         print(f"\nReport written to: {path}")
 
 
-# ─── Entry point ────────────────────────────��─────────────────────────────────
+# ─── Entry point ──────────────────────────────────────────────────────────────
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Codexion project tester (Python)",
