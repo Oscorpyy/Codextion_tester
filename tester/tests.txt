@@ -1,0 +1,80 @@
+# Codexion Tester — Test Cases
+#
+# Format (one test per line):
+#   type|label|args
+#
+# 'args' is the space-separated list of arguments passed to the binary.
+# Leave 'args' empty for tests that require no arguments (e.g. invalid_args
+# with 0 arguments, or makefile checks).
+#
+# Supported types:
+#   invalid_args       binary must exit non-zero
+#   single_coder       1 coder must produce "burned out"
+#   no_burnout         no burnout; all coders reach their compile goal
+#   expect_burnout     at least one "burned out" must appear
+#   log_format         line format, monotonic timestamps, dongle counts
+#   burnout_precision  "burned out" timestamp within ±tolerance ms
+#   cooldown           dongle re-acquisition respects cooldown period
+#   scheduler          valid output, correct format, finishes within timeout
+#   valgrind           no memory errors / heap leaks (skipped if absent)
+#   stop_condition     simulation stops once all coders reach compile goal
+#   phase_timing       compile/debug/refactor durations within ±tolerance ms
+#   makefile           Makefile rules, binary name, flags, no-relink
+#
+# Binary argument order:
+#   number_of_coders  time_to_burnout  time_to_compile  time_to_debug
+#   time_to_refactor  number_of_compiles_required  dongle_cooldown  scheduler
+
+# ── Category 0: Makefile checks ───────────────────────────────────────────────
+makefile|Codexion Makefile|
+
+# ── Category 1: Invalid arguments ────────────────────────────────────────────
+invalid_args|Too few args (0 args)|
+invalid_args|Too few args (3 args)|3 800 200
+invalid_args|Too few args (7 args)|4 800 200 100 50 3 0
+invalid_args|Negative number_of_coders|-1 800 200 100 50 3 0 fifo
+invalid_args|Negative time_to_burnout|2 -1 200 100 50 3 0 fifo
+invalid_args|Negative time_to_compile|2 800 -1 100 50 3 0 fifo
+invalid_args|Negative time_to_debug|2 800 200 -1 50 3 0 fifo
+invalid_args|Negative time_to_refactor|2 800 200 100 -1 3 0 fifo
+invalid_args|Negative number_of_compiles|2 800 200 100 50 -1 0 fifo
+invalid_args|Negative dongle_cooldown|2 800 200 100 50 3 -1 fifo
+invalid_args|Zero number_of_coders|0 800 200 100 50 3 0 fifo
+invalid_args|Invalid scheduler 'round_robin'|4 800 200 100 50 3 0 round_robin
+invalid_args|Invalid scheduler 'FIFO' (case)|4 800 200 100 50 3 0 FIFO
+invalid_args|Invalid scheduler 'random'|4 800 200 100 50 3 0 random
+invalid_args|Non-integer coders 'abc'|abc 800 200 100 50 3 0 fifo
+invalid_args|Non-integer burnout '1.5'|2 1.5 200 100 50 3 0 fifo
+invalid_args|Non-integer compile 'two'|2 800 two 100 50 3 0 fifo
+
+# ── Category 2: Single coder ──────────────────────────────────────────────────
+single_coder|1 coder burns out (only 1 dongle available, needs 2)|1 400 200 100 50 3 0 fifo
+
+# ── Category 3: Basic cases without burnout ───────────────────────────────────
+no_burnout|2 coders fifo|2 2000 200 100 50 2 0 fifo
+no_burnout|4 coders edf|4 2000 200 100 50 2 0 edf
+
+# ── Category 4: Expected burnout ──────────────────────────────────────────────
+expect_burnout|Expected burnout occurs (burnout=150 ms, compile=300 ms)|4 150 300 150 100 5 0 fifo
+
+# ── Category 5: Log format verification ──────────────────────────────────────
+log_format|Log format|3 2000 300 150 100 2 0 fifo
+
+# ── Category 6: Burnout timing precision (±tolerance ms) ─────────────────────
+burnout_precision|Burnout timing precision (burnout=400 ms)|1 400 200 100 50 3 0 fifo
+
+# ── Category 7: Dongle cooldown ───────────────────────────────────────────────
+cooldown|Dongle cooldown (cooldown=200 ms)|2 5000 300 150 100 3 200 fifo
+
+# ── Category 8: Scheduler correctness ────────────────────────────────────────
+scheduler|Scheduler fifo|3 2000 300 150 100 2 0 fifo
+scheduler|Scheduler edf|3 2000 300 150 100 2 0 edf
+
+# ── Category 9: Memory leaks (valgrind — skipped if not installed) ────────────
+valgrind|Valgrind memory check|2 1500 300 150 100 2 0 fifo
+
+# ── Category 10: Stop condition ───────────────────────────────────────────────
+stop_condition|Stop condition (2 coders, 3 compiles required)|2 5000 200 100 50 3 0 fifo
+
+# ── Category 11: Phase timing precision (±tolerance ms) ──────────────────────
+phase_timing|Phase timing precision (compile=300 debug=150 refactor=100)|2 5000 300 150 100 2 0 fifo
