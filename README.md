@@ -1,13 +1,17 @@
 # README_TESTER.md — Codexion Project Tester
 
-A **comprehensive bash test suite** for the *Codexion* project (42 school).  
+A **comprehensive test suite** for the *Codexion* project (42 school), available
+as both a Bash script (`tester.sh`) and a Python script (`tester.py`).
+
 The tester covers argument validation, burnout logic, log-format correctness,
-timing precision, dongle cooldown, scheduler behaviour, memory leaks, and the
-simulation stop-condition.
+timing precision, dongle cooldown, scheduler behaviour, memory leaks, Makefile
+compliance, and the simulation stop-condition.
 
 ---
 
 ## Prerequisites
+
+### Bash tester (`tester.sh`)
 
 | Tool | Required | Notes |
 |------|----------|-------|
@@ -17,9 +21,19 @@ simulation stop-condition.
 | `grep -P` | ✅ Yes | Perl-compatible regex; available on most Linux distros |
 | `valgrind` | ⬜ Optional | Only needed for the memory-leak test (Category 9) |
 
+### Python tester (`tester.py`)
+
+| Tool | Required | Notes |
+|------|----------|-------|
+| Python ≥ 3.8 | ✅ Yes | Uses `dataclasses`, `subprocess.run(capture_output=...)` |
+| `make` | ✅ Yes | Used to build the project automatically |
+| `valgrind` | ⬜ Optional | Only needed for the memory-leak test (Category 9) |
+
 ---
 
 ## Quick start
+
+### Bash tester
 
 ```bash
 # 1. Clone the tester next to your codexion project
@@ -40,7 +54,39 @@ The script will:
 1. Run `make` in the current directory to (re)build the project.  
 2. Execute every test category in order.  
 3. Print a **coloured summary** (`✅ PASS` / `❌ FAIL` / `⏭  SKIP`) for each test.  
-4. Print a final score and exit with code **0** (all pass) or **1** (any fail).
+4. Print a final score, and — if any tests failed — list **each failed test
+   with the exact input that was used**.  
+5. Exit with code **0** (all pass) or **1** (any fail).
+
+### Python tester
+
+```bash
+# Basic usage (binary in current directory, Makefile auto-detected)
+python3 tester.py
+
+# Specify binary and repo explicitly
+python3 tester.py /path/to/codexion --repo /path/to/codexion_repo
+
+# Save a JSON report file
+python3 tester.py --report results.json
+
+# Adjust timeout and timing tolerance
+python3 tester.py --timeout 20 --tolerance 25
+```
+
+Full option reference:
+
+```
+usage: tester.py [binary] [--repo PATH] [--report FILE]
+                 [--timeout SECS] [--tolerance MS]
+
+  binary          Path to the codexion binary  (default: ./codexion)
+  --repo PATH     Path to the repo directory with the Makefile
+                  (default: directory of the binary, or '.')
+  --report FILE   Write a JSON report to FILE after all tests
+  --timeout SECS  Per-test timeout in seconds  (default: 15)
+  --tolerance MS  Acceptable timing error in ms (default: 15)
+```
 
 ---
 
@@ -86,22 +132,61 @@ Where `<state>` is one of:
 
 ## Test categories
 
+Both testers run the same core categories. `tester.py` adds categories **0** and **11**.
+
 | # | Name | What is checked |
 |---|------|-----------------|
+| 0 | **Makefile** *(Python only)* | `all`/`clean`/`fclean`/`re` rules exist; binary name `codexion` is referenced; `-Wall -Wextra -Werror` flags present; no relink on a second `make` call |
 | 1 | **Invalid arguments** | Too few args, negative values, zero coders, bad scheduler string, non-integer values → binary must exit non-zero |
 | 2 | **Single coder** | 1 coder + 1 dongle → can never acquire 2 dongles → must burn out |
 | 3 | **Basic: no burnout** | 2 coders (fifo) and 4 coders (edf) with generous timings → no burnout, all coders complete their compile goal |
 | 4 | **Expected burnout** | `time_to_burnout < time_to_compile` → at least one "burned out" must appear |
 | 5 | **Log format** | Every line matches the pattern; timestamps are non-decreasing; each `is compiling` is preceded by exactly 2 `has taken a dongle` for the same coder; no mixed/garbage lines |
-| 6 | **Burnout precision** | Log timestamp of "burned out" is within ±15 ms of `time_to_burnout` ms after the first log line |
+| 6 | **Burnout precision** | Log timestamp of "burned out" is within ±tolerance ms of `time_to_burnout` ms after the first log line |
 | 7 | **Dongle cooldown** | Verifies a coder does not re-acquire a dongle sooner than `dongle_cooldown` ms after its last compile |
 | 8 | **fifo vs edf** | Both schedulers produce valid output and finish within the timeout |
 | 9 | **Memory leaks (valgrind)** | No memory errors and no heap leaks (skipped if valgrind is absent) |
 | 10 | **Stop condition** | With `number_of_compiles_required=3`, simulation stops after all coders reach the goal without over-running |
+| 11 | **Phase timing** *(Python only)* | Compile / debug / refactor phase durations are within ±tolerance ms of the configured values |
+
+---
+
+## Failed-test summary
+
+Both testers print a **"Failed tests (with input)"** section at the end of the
+run listing every failing test together with the exact binary arguments that
+were used, for easy reproduction:
+
+```
+Failed tests (with input):
+  ✗ Dongle cooldown: premature dongle re-acquisition detected
+    input : 2 5000 300 150 100 3 200 fifo
+    detail: coder 1 took dongle at 350 ms, last compiled at 300 ms (gap=50 ms < threshold=185 ms)
+```
+
+---
+
+## JSON report (Python tester only)
+
+Pass `--report results.json` to save a machine-readable report:
+
+```json
+{
+  "summary": { "pass": 48, "fail": 2, "skip": 2, "total": 52 },
+  "tests": [
+    { "label": "Too few args (0 args)", "status": "PASS", "input": "", "detail": "" },
+    { "label": "Dongle cooldown: ...", "status": "FAIL",
+      "input": "2 5000 300 150 100 3 200 fifo",
+      "detail": "coder 1 took dongle at 350 ms ..." }
+  ]
+}
+```
 
 ---
 
 ## Configuration
+
+### Bash tester (`tester.sh`)
 
 Edit the variables at the top of `tester.sh` to adjust defaults:
 
@@ -111,6 +196,10 @@ MAKE_DIR="."                # directory containing the Makefile
 TIMEOUT_SEC=15              # per-test timeout in seconds
 TIMING_TOLERANCE=15         # acceptable timing error in ms (categories 6 & 7)
 ```
+
+### Python tester (`tester.py`)
+
+All options are command-line flags; see `python3 tester.py --help`.
 
 ---
 
@@ -126,10 +215,17 @@ Running make in . …
 ✅ PASS — Too few args (3 args)
 ...
 
-═══════════════════════════════════════
-  RESULTS: 42/42 tests passed
-  All tests passed! 🎉
-═══════════════════════════════════════
+═══════════════════════════════════════════════
+  RESULTS: 48/50 tests passed
+  Failed:  2
+═══════════════════════════════════════════════
+
+Failed tests (with input):
+  ✗ Burnout precision: delta=450 ms, expected=400 ms (diff=50 ms > 15 ms)
+    input : 1 400 200 100 50 3 0 fifo
+  ✗ Dongle cooldown: premature dongle re-acquisition detected
+    input : 2 5000 300 150 100 3 200 fifo
+    detail: coder 2 took dongle at 510 ms, last compiled at 500 ms (gap=10 ms < threshold=185 ms)
 ```
 
 ---
@@ -138,10 +234,11 @@ Running make in . …
 
 | Symptom | Likely cause | Fix |
 |---------|-------------|-----|
-| `Binary './codexion' not found` | Build failed or wrong path | Run `make` manually; pass the correct path as `./tester.sh path/to/binary` |
-| Many FAIL on timing tests | Machine under heavy load | Increase `TIMING_TOLERANCE` in the script |
-| `grep: invalid option -- 'P'` | macOS default grep | Install GNU grep: `brew install grep` and ensure it is first in `PATH` |
+| `Binary './codexion' not found` | Build failed or wrong path | Run `make` manually; pass the correct path as `./tester.sh path/to/binary` (or `python3 tester.py path/to/binary`) |
+| Many FAIL on timing tests | Machine under heavy load | Increase `TIMING_TOLERANCE` / `--tolerance` |
+| `grep: invalid option -- 'P'` | macOS default grep (bash tester) | Install GNU grep: `brew install grep` and ensure it is first in `PATH` |
 | Valgrind tests skipped | valgrind not installed | `apt install valgrind` (Debian/Ubuntu) or `brew install valgrind` |
+| Category 0 skipped entirely | `--repo` points to wrong dir | Pass `--repo /path/to/your/codexion/repo` |
 
 ---
 

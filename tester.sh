@@ -40,10 +40,28 @@ FAIL=0
 SKIP=0
 
 # ---------------------------------------------------------------------------
+# Failed-test tracking
+# _FAIL_ARGS holds the binary arguments for the current test; set it before
+# calling run_binary / assert_* so that fail() can record it automatically.
+# It is consumed (reset to "") by fail() after each use.
+# ---------------------------------------------------------------------------
+declare -a FAILED_TESTS=()
+_FAIL_ARGS=""
+
+# ---------------------------------------------------------------------------
 # Helper: print pass / fail
 # ---------------------------------------------------------------------------
 pass() { echo -e "${GREEN}✅ PASS${RESET} — $1"; PASS=$((PASS + 1)); }
-fail() { echo -e "${RED}❌ FAIL${RESET} — $1"; FAIL=$((FAIL + 1)); }
+fail() {
+    echo -e "${RED}❌ FAIL${RESET} — $1"
+    FAIL=$((FAIL + 1))
+    if [[ -n "${_FAIL_ARGS}" ]]; then
+        FAILED_TESTS+=("$1 | input: ${_FAIL_ARGS}")
+    else
+        FAILED_TESTS+=("$1")
+    fi
+    _FAIL_ARGS=""
+}
 skip() { echo -e "${YELLOW}⏭  SKIP${RESET} — $1"; SKIP=$((SKIP + 1)); }
 section() { echo -e "\n${CYAN}${BOLD}═══ $1 ═══${RESET}"; }
 
@@ -64,6 +82,7 @@ run_binary() {
 # ---------------------------------------------------------------------------
 assert_exits_non_zero() {
     local label="$1"; shift
+    local args_str="$*"
     local outfile rc=0
     outfile="$(mktemp /tmp/codexion_test_XXXXXX)"
     timeout "${TIMEOUT_SEC}s" "${BINARY}" "$@" >"${outfile}" 2>&1 || rc=$?
@@ -71,6 +90,7 @@ assert_exits_non_zero() {
     if [[ ${rc} -ne 0 ]]; then
         pass "${label}"
     else
+        _FAIL_ARGS="${args_str}"
         fail "${label} (expected non-zero exit, got 0)"
     fi
 }
@@ -80,6 +100,7 @@ assert_exits_non_zero() {
 # ---------------------------------------------------------------------------
 assert_exits_zero() {
     local label="$1"; shift
+    local args_str="$*"
     local outfile rc=0
     outfile="$(mktemp /tmp/codexion_test_XXXXXX)"
     timeout "${TIMEOUT_SEC}s" "${BINARY}" "$@" >"${outfile}" 2>&1 || rc=$?
@@ -87,6 +108,7 @@ assert_exits_zero() {
     if [[ ${rc} -eq 0 ]]; then
         pass "${label}"
     else
+        _FAIL_ARGS="${args_str}"
         fail "${label} (expected exit 0, got ${rc})"
     fi
 }
@@ -230,6 +252,7 @@ section "Category 2: Single coder"
 
 # 1 coder needs 2 dongles but there is only 1 dongle → cannot compile → burns out
 TMP_LOG="$(mktemp /tmp/codexion_test_XXXXXX)"
+_FAIL_ARGS="1 400 200 100 50 3 0 fifo"
 run_binary "${TMP_LOG}" 1 400 200 100 50 3 0 fifo
 if grep -q "burned out" "${TMP_LOG}"; then
     pass "1 coder burns out (only 1 dongle available, needs 2)"
@@ -245,6 +268,7 @@ section "Category 3: Basic cases without burnout"
 
 # ---------- 2 coders, fifo ----------
 TMP_LOG="$(mktemp /tmp/codexion_test_XXXXXX)"
+_FAIL_ARGS="2 2000 200 100 50 2 0 fifo"
 run_binary "${TMP_LOG}" 2 2000 200 100 50 2 0 fifo
 
 if ! grep -q "burned out" "${TMP_LOG}"; then
@@ -270,6 +294,7 @@ rm -f "${TMP_LOG}"
 
 # ---------- 4 coders, edf ----------
 TMP_LOG="$(mktemp /tmp/codexion_test_XXXXXX)"
+_FAIL_ARGS="4 2000 200 100 50 2 0 edf"
 run_binary "${TMP_LOG}" 4 2000 200 100 50 2 0 edf
 
 if ! grep -q "burned out" "${TMP_LOG}"; then
@@ -300,6 +325,7 @@ section "Category 4: Expected burnout"
 
 # time_to_burnout=150 ms, time_to_compile=300 ms → coder starves while waiting
 TMP_LOG="$(mktemp /tmp/codexion_test_XXXXXX)"
+_FAIL_ARGS="4 150 300 150 100 5 0 fifo"
 run_binary "${TMP_LOG}" 4 150 300 150 100 5 0 fifo
 
 if grep -q "burned out" "${TMP_LOG}"; then
@@ -315,9 +341,8 @@ rm -f "${TMP_LOG}"
 section "Category 5: Log format verification"
 
 TMP_LOG="$(mktemp /tmp/codexion_test_XXXXXX)"
+_FAIL_ARGS="3 2000 300 150 100 2 0 fifo"
 run_binary "${TMP_LOG}" 3 2000 300 150 100 2 0 fifo
-
-# 5a — Line format
 if validate_log_format "${TMP_LOG}"; then
     pass "Log format: all lines match expected pattern"
 else
@@ -356,6 +381,7 @@ section "Category 6: Burnout timing precision (±${TIMING_TOLERANCE} ms)"
 
 BURNOUT_MS=400
 TMP_LOG="$(mktemp /tmp/codexion_test_XXXXXX)"
+_FAIL_ARGS="1 ${BURNOUT_MS} 200 100 50 3 0 fifo"
 run_binary "${TMP_LOG}" 1 "${BURNOUT_MS}" 200 100 50 3 0 fifo
 
 if grep -q "burned out" "${TMP_LOG}"; then
@@ -385,6 +411,7 @@ rm -f "${TMP_LOG}"
 COOLDOWN_MS=200
 section "Category 7: Dongle cooldown (cooldown=${COOLDOWN_MS} ms)"
 TMP_LOG="$(mktemp /tmp/codexion_test_XXXXXX)"
+_FAIL_ARGS="2 5000 300 150 100 3 ${COOLDOWN_MS} fifo"
 # Generous burnout ensures we collect multiple compile cycles per coder.
 run_binary "${TMP_LOG}" 2 5000 300 150 100 3 "${COOLDOWN_MS}" fifo
 
@@ -435,6 +462,7 @@ section "Category 8: fifo vs edf schedulers"
 
 for SCHED in fifo edf; do
     TMP_LOG="$(mktemp /tmp/codexion_test_XXXXXX)"
+    _FAIL_ARGS="3 2000 300 150 100 2 0 ${SCHED}"
     run_binary "${TMP_LOG}" 3 2000 300 150 100 2 0 "${SCHED}"
 
     if [[ -s "${TMP_LOG}" ]]; then
@@ -514,6 +542,7 @@ section "Category 10: Stop condition (number_of_compiles_required)"
 
 REQUIRED_COMPILES=3
 TMP_LOG="$(mktemp /tmp/codexion_test_XXXXXX)"
+_FAIL_ARGS="2 5000 200 100 50 ${REQUIRED_COMPILES} 0 fifo"
 run_binary "${TMP_LOG}" 2 5000 200 100 50 "${REQUIRED_COMPILES}" 0 fifo
 
 # 10a — No burnout expected (generous timings)
@@ -571,6 +600,12 @@ fi
 if [[ ${FAIL} -gt 0 ]]; then
     echo -e "  ${RED}Failed:  ${FAIL}${RESET}"
     echo -e "${BOLD}═══════════════════════════════════════${RESET}"
+    echo ""
+    echo -e "${BOLD}${RED}Failed tests (with input):${RESET}"
+    for entry in "${FAILED_TESTS[@]}"; do
+        echo -e "  ${RED}✗${RESET} ${entry}"
+    done
+    echo ""
     exit 1
 fi
 echo -e "${GREEN}  All tests passed! 🎉${RESET}"
