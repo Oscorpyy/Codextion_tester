@@ -1,7 +1,7 @@
 # README_TESTER.md — Codexion Project Tester
 
 A **comprehensive test suite** for the *Codexion* project (42 school), available
-as both a Bash script (`tester.sh`) and a Python script (`tester.py`).
+as a Python script (`tester.py`) or installable globally as `codetest`.
 
 The tester covers argument validation, burnout logic, log-format correctness,
 timing precision, dongle cooldown, scheduler behaviour, memory leaks, Makefile
@@ -10,16 +10,6 @@ compliance, and the simulation stop-condition.
 ---
 
 ## Prerequisites
-
-### Bash tester (`tester.sh`)
-
-| Tool | Required | Notes |
-|------|----------|-------|
-| `bash` ≥ 4 | ✅ Yes | Associative arrays (`declare -A`) are used |
-| `make` | ✅ Yes | Used to build the project automatically |
-| `timeout` | ✅ Yes | Part of GNU coreutils (Linux / macOS via brew) |
-| `grep -P` | ✅ Yes | Perl-compatible regex; available on most Linux distros |
-| `valgrind` | ⬜ Optional | Only needed for the memory-leak test (Category 9) |
 
 ### Python tester (`tester.py`)
 
@@ -33,71 +23,63 @@ compliance, and the simulation stop-condition.
 
 ## Quick start
 
-### Bash tester
+### Global Installation (Recommended)
+
+You can install the tester to use it globally from anywhere as the `codetest` command.
 
 ```bash
-# 1. Clone the tester next to your codexion project
-#    (or copy tester.sh into your project directory)
+# 1. Go to the tester directory
+cd /path/to/Codextion_tester
 
-# 2. Make the script executable
-chmod +x tester.sh
+# 2. Run the install script
+./install.sh
 
-# 3. Run — assumes `make` is available and `./codexion` is the binary name
-./tester.sh
-
-# 4. Specify a custom path to the binary (optional)
-./tester.sh /path/to/codexion
+# If ~/.local/bin is not in your PATH, add it to your ~/.zshrc or ~/.bashrc:
+# export PATH="$HOME/.local/bin:$PATH"
 ```
 
-The script will:
-
-1. Run `make` in the current directory to (re)build the project.  
-2. Execute every test category in order.  
-3. Print a **coloured summary** (`✅ PASS` / `❌ FAIL` / `⏭  SKIP`) for each test.  
-4. Print a final score, and — if any tests failed — list **each failed test
-   with the exact input that was used**.  
-5. Exit with code **0** (all pass) or **1** (any fail).
-
-### Python tester
+Once installed, you can use the `codetest` command directly:
 
 ```bash
-# Basic usage (binary in current directory, Makefile auto-detected)
-python3 tester.py
+# Test the current directory (auto-detects Makefile and builds codexion)
+codetest
 
-# Specify binary and repo explicitly
-python3 tester.py /path/to/codexion --repo /path/to/codexion_repo
+# Test a specific project folder
+codetest ~/42/codexion
 
-# Save a JSON report file
-python3 tester.py --report results.json
+# Test a specific compiled binary directly (skips the build step)
+codetest ~/42/codexion/leodexion
 
-# Adjust timeout and timing tolerance
-python3 tester.py --timeout 20 --tolerance 25
+```
+
+### Manual Usage (without install)
+```bash
+# Test the current directory
+python3 tester.py .
+
+# Test a specific directory
+python3 tester.py /path/to/codexion
+
+# Test a specifically named binary inside a directory
+python3 tester.py /path/to/codexion --name my_binary
+
+# Build skipped: Test an already compiled binary directly
+python3 tester.py /path/to/codexion/compiled_binary
+
 ```
 
 Full option reference:
 
 ```
-usage: tester.py [binary] [--repo PATH] [--report FILE]
+usage: tester.py [target] [--name BINARY] [--report FILE]
                  [--timeout SECS] [--tolerance MS]
 
-  binary          Path to the codexion binary  (default: ./codexion)
-  --repo PATH     Path to the repo directory with the Makefile
-                  (default: directory of the binary, or '.')
+  target          Path to the repo directory or directly to the binary (default: .)
+  --name BINARY   Name of the binary to test if a directory is given (default: codexion)
   --report FILE   Write a JSON report to FILE after all tests
   --timeout SECS  Per-test timeout in seconds  (default: 15)
   --tolerance MS  Acceptable timing error in ms (default: 15)
 ```
-
----
-
-## Binary interface
-
-The tester assumes the binary accepts **exactly 8 positional arguments** in
-this order:
-
-```
-./codexion  <number_of_coders>  <time_to_burnout>  <time_to_compile>
-            <time_to_debug>     <time_to_refactor>
             <number_of_compiles_required>  <dongle_cooldown>  <scheduler>
 ```
 

@@ -3,16 +3,17 @@
 tester.py — Python tester for the Codexion (42 school) project
 
 Usage:
-    python3 tester.py [binary] [--repo PATH] [--report FILE]
+    python3 tester.py [target] [--name BINARY] [--report FILE]
                       [--timeout SECS] [--tolerance MS]
 
 Arguments:
-    binary             Path to the codexion binary  (default: ./codexion)
-    --repo PATH        Path to the repo directory containing the Makefile
-                       (default: same directory as the binary, or '.')
-    --report FILE      Write a JSON report to this file after all tests
-    --timeout SECS     Per-test timeout in seconds  (default: 15)
-    --tolerance MS     Acceptable timing error in ms (default: 15)
+    target         Path to the repo directory or directly to the binary
+                   (default: '.')
+    --name BINARY  Name of the binary to look for in a repo (default: 'codexion')
+    --report FILE  Write a JSON report to this file after all tests
+    --timeout SECS Per-test timeout in seconds (default: 15)
+    --tolerance MS Acceptable timing error in ms (default: 15)
+
 
 Binary interface (8 positional args):
     number_of_coders  time_to_burnout  time_to_compile  time_to_debug
@@ -68,7 +69,7 @@ class Tester:
         r'(has taken a dongle|is compiling|is debugging|is refactoring|burned out)$'
     )
 
-    def __init__(self, binary: str, repo: str, timeout: int, tolerance: int) -> None:
+    def __init__(self, binary: str, repo: Optional[str], timeout: int, tolerance: int) -> None:
         self.binary    = binary
         self.repo      = repo
         self.timeout   = timeout
@@ -121,10 +122,10 @@ class Tester:
         except subprocess.TimeoutExpired:
             return 124, ""
 
-    @staticmethod
-    def fmt(*args) -> str:
+    def fmt(self, *args) -> str:
         """Format binary arguments as a human-readable string."""
-        return " ".join(str(a) for a in args)
+        binary_name = os.path.basename(self.binary)
+        return f"./{binary_name} " + " ".join(str(a) for a in args)
 
     # ── log parsing ───────────────────────────────────────────────────────────
 
@@ -188,6 +189,20 @@ class Tester:
     # ══════════════════════════════════════════════════════════════════════════
     def cat0_makefile(self) -> None:
         self.section("Category 0: Makefile checks")
+
+        if not self.repo:
+            for label in (
+                "Makefile exists",
+                "Makefile: rule 'all' present",
+                "Makefile: rule 'clean' present",
+                "Makefile: rule 'fclean' present",
+                "Makefile: rule 're' present",
+                "Makefile: binary name 'codexion' referenced",
+                "Makefile: compilation flags -Wall -Wextra -Werror present",
+                "Makefile: no relink on repeated 'make'",
+            ):
+                self.skip(label, "Target is a binary file; no repository provided")
+            return
 
         mk_path: Optional[Path] = None
         for name in ("Makefile", "makefile"):
@@ -496,7 +511,7 @@ class Tester:
             return
 
         args = [2, 1500, 300, 150, 100, 2, 0, "fifo"]
-        astr = self.fmt(*args)
+        astr = "valgrind " + self.fmt(*args)
 
         with tempfile.NamedTemporaryFile(suffix=".vg", delete=False) as vf:
             vg_log = vf.name
@@ -525,6 +540,10 @@ class Tester:
             self.ok("Valgrind: no memory errors", astr)
         else:
             self.fail("Valgrind: memory errors detected", astr)
+
+        if "All heap blocks were freed" in vg_content:
+            self.ok("Valgrind: no heap leaks (All blocks freed)", astr)
+            return
 
         def _lost_bytes(pattern: str) -> int:
             m = re.search(pattern, vg_content)
@@ -607,14 +626,24 @@ class Tester:
         for seq in by_coder.values():
             for i in range(len(seq) - 1):
                 ts0, s0 = seq[i]
-                ts1, _  = seq[i + 1]
+                ts1, s1 = seq[i + 1]
                 dur = ts1 - ts0
                 if s0 == "is compiling":
                     compile_diffs.append(abs(dur - compile_ms))
                 elif s0 == "is debugging":
                     debug_diffs.append(abs(dur - debug_ms))
                 elif s0 == "is refactoring":
-                    refactor_diffs.append(abs(dur - refactor_ms))
+                    # Refactoring is usually followed by taking a dongle, which might wait for available dongles.
+                    # Thus, the duration from "refactoring" to the next action could be longer than refactor_ms.
+                    # We will only record it if the next state is not "has taken a dongle" to be safe,
+                    # or we record (dur - refactor_ms) maxing at 0 if dur >= refactor_ms.
+                    if s1 != "has taken a dongle":
+                        refactor_diffs.append(abs(dur - refactor_ms))
+                    else:
+                        if dur < refactor_ms:
+                            refactor_diffs.append(refactor_ms - dur)
+                        else:
+                            refactor_diffs.append(0)
 
         for phase, diffs, expected in (
             ("compile",  compile_diffs,  compile_ms),
@@ -647,36 +676,50 @@ class Tester:
     # ══════════════════════════════════════════════════════════════════════════
     def run_all(self) -> None:
         # ── Step 0: build ────────────────────────────────────────────────────
-        self.section("Step 0: Build")
-        mk_found = any(
-            (Path(self.repo) / n).exists() for n in ("Makefile", "makefile")
-        )
-        if mk_found:
-            print(f"Running make in {self.repo} …")
-            r = subprocess.run(["make", "-C", self.repo])
-            if r.returncode == 0:
-                self.ok("make succeeded")
-            else:
-                self.fail("make failed — subsequent tests may not be meaningful")
+        if self.repo:
+            self.section("Step 0: Build")
+            try:
+                mk_found = any(
+                    (Path(self.repo) / n).exists() for n in ("Makefile", "makefile")
+                )
+                if mk_found:
+                    print(f"Running make in {self.repo} …")
+                    r = subprocess.run(["make", "-C", self.repo])
+                    if r.returncode == 0:
+                        self.ok("make succeeded")
+                    else:
+                        self.fail("make failed — subsequent tests may not be meaningful")
+                else:
+                    print(f"{YELLOW}No Makefile found in {self.repo} — skipping build step{RESET}")
+            except Exception as e:
+                self.fail("Build step failed with an error", detail=str(e))
         else:
-            print(f"{YELLOW}No Makefile found in {self.repo} — skipping build step{RESET}")
+            self.section("Step 0: Build")
+            print(f"{YELLOW}Target is a binary file — skipping build step{RESET}")
 
+        if not os.path.exists(self.binary):
+            print(f"{RED}Binary '{self.binary}' not found.{RESET}")
+            sys.exit(1)
+            
         if not os.access(self.binary, os.X_OK):
-            print(f"{RED}Binary '{self.binary}' not found or not executable.{RESET}")
+            print(f"{RED}Binary '{self.binary}' is not executable.{RESET}")
             sys.exit(1)
 
-        self.cat0_makefile()
-        self.cat1_invalid_args()
-        self.cat2_single_coder()
-        self.cat3_basic()
-        self.cat4_burnout()
-        self.cat5_log_format()
-        self.cat6_burnout_precision()
-        self.cat7_cooldown()
-        self.cat8_schedulers()
-        self.cat9_valgrind()
-        self.cat10_stop_condition()
-        self.cat11_timing_precision()
+        try:
+            self.cat0_makefile()
+            self.cat1_invalid_args()
+            self.cat2_single_coder()
+            self.cat3_basic()
+            self.cat4_burnout()
+            self.cat5_log_format()
+            self.cat6_burnout_precision()
+            self.cat7_cooldown()
+            self.cat8_schedulers()
+            self.cat9_valgrind()
+            self.cat10_stop_condition()
+            self.cat11_timing_precision()
+        except Exception as e:
+            print(f"\n{RED}An error occurred during tests execution: {e}{RESET}")
 
     # ══════════════════════════════════════════════════════════════════════════
     # Final summary
@@ -739,13 +782,12 @@ def main() -> None:
         epilog=__doc__,
     )
     parser.add_argument(
-        "binary", nargs="?", default="./codexion",
-        help="Path to the codexion binary (default: ./codexion)",
+        "target", nargs="?", default=".",
+        help="Path to the repository directory or directly to the binary file (default: '.')",
     )
     parser.add_argument(
-        "--repo", default=None,
-        help="Path to the repo directory containing the Makefile "
-             "(default: directory of the binary, or '.')",
+        "--name", default="codexion",
+        help="Name of the binary to test if a directory is given (default: 'codexion')",
     )
     parser.add_argument(
         "--report", default=None, metavar="FILE",
@@ -761,20 +803,33 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # Resolve repo path
-    if args.repo is None:
-        binary_dir = os.path.dirname(os.path.abspath(args.binary))
-        args.repo  = binary_dir if binary_dir else "."
+    target_path = os.path.abspath(args.target)
+    
+    if os.path.isfile(target_path):
+        repo_path = None
+        binary_path = target_path
+    elif os.path.isdir(target_path):
+        repo_path = target_path
+        binary_path = os.path.join(repo_path, args.name)
+    else:
+        print(f"{RED}Error: Target path '{target_path}' is not a valid file or directory.{RESET}")
+        sys.exit(1)
 
-    t = Tester(args.binary, args.repo, args.timeout, args.tolerance)
-    t.run_all()
-    t.print_summary()
+    try:
+        t = Tester(binary_path, repo_path, args.timeout, args.tolerance)
+        t.run_all()
+        t.print_summary()
 
-    if args.report:
-        t.write_report(args.report)
+        if args.report:
+            t.write_report(args.report)
 
-    sys.exit(0 if t.fail_n == 0 else 1)
-
+        sys.exit(0 if t.fail_n == 0 else 1)
+    except KeyboardInterrupt:
+        print(f"\n{YELLOW}Testing interrupted by user.{RESET}")
+        sys.exit(130)
+    except Exception as e:
+        print(f"\n{RED}An unexpected error occurred: {e}{RESET}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
