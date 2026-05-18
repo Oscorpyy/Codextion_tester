@@ -57,9 +57,8 @@ def compile_project():
     return res
 
 # ⏱️ Vérification des durées strictes
-def check_durations():
-    print("\n⏱️ Checking Chronology, Durations & Cooldown")
-    args = ["2", "5000", "100", "100", "100", "10", "1000", "edf"]
+def check_durations(args):
+    print(f"\n⏱️ Checking Chronology, Durations & Cooldown for {args[-1:]} mode")
     print(f"Running control test : ./codexion {' '.join(args)}")
     try:
         res = subprocess.run([EXECUTABLE] + args, capture_output=True, text=True)
@@ -74,7 +73,7 @@ def check_durations():
         chrono_ok = True
         
         coder_last = {}
-        last_release_ts = -1000 
+        last_release_ts = -1000
         
         ok = True
         
@@ -171,7 +170,8 @@ def main():
     results = {}
     
     results["Compilation"] = compile_project()
-    results["Chronology, Durations & Cooldown"] = check_durations()
+    results["Chronology, Durations & Cooldown for edf"] = check_durations(["2", "5000", "100", "100", "100", "10", "1000", "edf"])
+    results["Chronology, Durations & Cooldown for fifo"] = check_durations(["2", "5000", "100", "100", "100", "10", "1000", "fifo"])
     results["Base tests"] = basic_tests()
     
     valgrind_tests()
