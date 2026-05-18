@@ -683,8 +683,7 @@ class Tester:
                     (Path(self.repo) / n).exists() for n in ("Makefile", "makefile")
                 )
                 if mk_found:
-                    print(f"Running make in {self.repo} …")
-                    r = subprocess.run(["make", "-C", self.repo])
+                    r = subprocess.run(["make", "--no-print-directory", "-s", "-C", self.repo], capture_output=True)
                     if r.returncode == 0:
                         self.ok("make succeeded")
                     else:
