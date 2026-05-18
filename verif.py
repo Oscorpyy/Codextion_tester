@@ -3,7 +3,7 @@ import sys
 import os
 
 
-def analyse_valgrind(file_path):
+def analyse_valgrind(file_path: str) -> tuple[int, int, int]:
     errors = 0
     leaks = 0
     others = 0
@@ -17,18 +17,18 @@ def analyse_valgrind(file_path):
 
             if ("definitely lost" in line or
                 "indirectly lost" in line or
-                "possibly lost" in line):
+                    "possibly lost" in line):
                 leaks += 1
 
             if ("invalid read" in line.lower() or
                 "invalid write" in line.lower() or
-                "uninitialised" in line.lower()):
+                    "uninitialised" in line.lower()):
                 others += 1
 
     return errors, leaks, others
 
 
-def analyse_helgrind(file_path):
+def analyse_helgrind(file_path: str) -> tuple[int, int]:
     errors = 0
     others = 0
 
@@ -45,7 +45,7 @@ def analyse_helgrind(file_path):
     return errors, others
 
 
-def main():
+def main() -> int:
     # chemin dossier
     target = sys.argv[1] if len(sys.argv) > 1 else "."
 

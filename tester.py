@@ -9,7 +9,8 @@ Usage:
 Arguments:
     target         Path to the repo directory or directly to the binary
                    (default: '.')
-    --name BINARY  Name of the binary to look for in a repo (default: 'codexion')
+    --name BINARY  Name of the binary to look for in a repo (default:
+     'codexion')
     --report FILE  Write a JSON report to this file after all tests
     --timeout SECS Per-test timeout in seconds (default: 15)
     --tolerance MS Acceptable timing error in ms (default: 15)
@@ -22,7 +23,8 @@ Binary interface (8 positional args):
 Expected log format per line:
     <timestamp_ms> <coder_id> <state>
 where <state> is one of:
-    has taken a dongle | is compiling | is debugging | is refactoring | burned out
+    has taken a dongle | is compiling | is debugging | is refactoring |
+     burned out
 """
 
 import argparse
@@ -33,26 +35,29 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
-# ─── Default configuration ────────────────────────────────────────────────────
+# ─── Default configuration ───────────────────────────────────────────────────
 DEFAULT_TIMEOUT_SEC = 15
-DEFAULT_TIMING_TOL  = 15   # ms
+DEFAULT_TIMING_TOL = 15  # ms
 
-# ─── ANSI colours (auto-disabled when not a TTY) ──────────────────────────────
+
+# ─── ANSI colours (auto-disabled when not a TTY) ─────────────────────────────
 def _c(code: str) -> str:
     return code if sys.stdout.isatty() else ""
 
-RED    = _c('\033[0;31m')
-GREEN  = _c('\033[0;32m')
-YELLOW = _c('\033[1;33m')
-CYAN   = _c('\033[0;36m')
-BOLD   = _c('\033[1m')
-RESET  = _c('\033[0m')
 
-# ─── Data model ───────────────────────────────────────────────────────────────
+RED = _c('\033[0;31m')
+GREEN = _c('\033[0;32m')
+YELLOW = _c('\033[1;33m')
+CYAN = _c('\033[0;36m')
+BOLD = _c('\033[1m')
+RESET = _c('\033[0m')
+
+
+# ─── Data model ──────────────────────────────────────────────────────────────
 @dataclass
 class TestResult:
     label:      str
@@ -60,26 +65,30 @@ class TestResult:
     input_args: str = ""
     detail:     str = ""
 
+
 LogEntry = Tuple[int, int, str]   # (timestamp_ms, coder_id, state)
 
-# ─── Tester ───────────────────────────────────────────────────────────────────
+
+# ─── Tester ──────────────────────────────────────────────────────────────────
 class Tester:
     LOG_PAT = re.compile(
         r'^(\d+) (\d+) '
-        r'(has taken a dongle|is compiling|is debugging|is refactoring|burned out)$'
+        r'(has taken a dongle|is compiling|is debugging|is refactoring|'
+        r'burned out)$'
     )
 
-    def __init__(self, binary: str, repo: Optional[str], timeout: int, tolerance: int) -> None:
-        self.binary    = binary
-        self.repo      = repo
-        self.timeout   = timeout
+    def __init__(self, binary: str, repo: Optional[str], timeout: int,
+                 tolerance: int) -> None:
+        self.binary = binary
+        self.repo = repo
+        self.timeout = timeout
         self.tolerance = tolerance
-        self.results:  List[TestResult] = []
-        self.pass_n  = 0
-        self.fail_n  = 0
-        self.skip_n  = 0
+        self.results: List[TestResult] = []
+        self.pass_n = 0
+        self.fail_n = 0
+        self.skip_n = 0
 
-    # ── output helpers ────────────────────────────────────────────────────────
+    # ── output helpers ───────────────────────────────────────────────────────
 
     @staticmethod
     def section(title: str) -> None:
@@ -109,9 +118,9 @@ class Tester:
     def skip(self, label: str, reason: str = "") -> None:
         self._record(label, "SKIP", detail=reason)
 
-    # ── binary runner ─────────────────────────────────────────────────────────
+    # ── binary runner ────────────────────────────────────────────────────────
 
-    def run(self, *args) -> Tuple[int, str]:
+    def run(self, *args: Any) -> Tuple[int, str]:
         """Run binary with timeout. Returns (exit_code, combined_output).
         exit_code == 124 means timeout."""
         cmd = [self.binary] + [str(a) for a in args]
@@ -122,12 +131,12 @@ class Tester:
         except subprocess.TimeoutExpired:
             return 124, ""
 
-    def fmt(self, *args) -> str:
+    def fmt(self, *args: Any) -> str:
         """Format binary arguments as a human-readable string."""
         binary_name = os.path.basename(self.binary)
         return f"./{binary_name} " + " ".join(str(a) for a in args)
 
-    # ── log parsing ───────────────────────────────────────────────────────────
+    # ── log parsing ──────────────────────────────────────────────────────────
 
     def parse_log(self, output: str) -> Tuple[bool, List[LogEntry]]:
         """Parse log output. Returns (all_valid, entries).
@@ -153,7 +162,8 @@ class Tester:
             prev = ts
         return None
 
-    def check_dongle_before_compile(self, entries: List[LogEntry]) -> Optional[str]:
+    def check_dongle_before_compile(self, entries: List[LogEntry]
+                                    ) -> Optional[str]:
         dongle_count: Dict[int, int] = {}
         for _ts, cid, state in entries:
             if state == "has taken a dongle":
@@ -166,27 +176,27 @@ class Tester:
                 dongle_count[cid] = 0
         return None
 
-    # ── assert helpers ────────────────────────────────────────────────────────
+    # ── assert helpers ───────────────────────────────────────────────────────
 
-    def assert_non_zero(self, label: str, *args) -> None:
+    def assert_non_zero(self, label: Any, *args: Any) -> None:
         rc, _ = self.run(*args)
-        astr  = self.fmt(*args)
+        astr = self.fmt(*args)
         if rc != 0:
             self.ok(label, astr)
         else:
             self.fail(label, astr, "expected non-zero exit, got 0")
 
-    def assert_zero(self, label: str, *args) -> None:
+    def assert_zero(self, label: str, *args: str) -> None:
         rc, _ = self.run(*args)
-        astr  = self.fmt(*args)
+        astr = self.fmt(*args)
         if rc == 0:
             self.ok(label, astr)
         else:
             self.fail(label, astr, f"expected exit 0, got {rc}")
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     # Category 0: Makefile checks
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     def cat0_makefile(self) -> None:
         self.section("Category 0: Makefile checks")
 
@@ -201,7 +211,8 @@ class Tester:
                 "Makefile: compilation flags -Wall -Wextra -Werror present",
                 "Makefile: no relink on repeated 'make'",
             ):
-                self.skip(label, "Target is a binary file; no repository provided")
+                self.skip(label, "Target is a binary file; : "
+                          "no repository provided")
             return
 
         mk_path: Optional[Path] = None
@@ -244,15 +255,16 @@ class Tester:
                       detail="'codexion' not referenced in Makefile")
 
         # Compilation flags
-        has_wall   = re.search(r'-Wall\b',   content) is not None
+        has_wall = re.search(r'-Wall\b',   content) is not None
         has_wextra = re.search(r'-Wextra\b', content) is not None
         has_werror = re.search(r'-Werror\b', content) is not None
         if has_wall and has_wextra and has_werror:
-            self.ok("Makefile: compilation flags -Wall -Wextra -Werror present")
+            self.ok("Makefile: compilation flags -Wall -Wextra -Werror "
+                    "present")
         else:
             missing = [f for f, ok in (("-Wall",   has_wall),
-                                        ("-Wextra", has_wextra),
-                                        ("-Werror", has_werror)) if not ok]
+                                       ("-Wextra", has_wextra),
+                                       ("-Werror", has_werror)) if not ok]
             self.fail("Makefile: compilation flags incomplete",
                       detail=f"missing: {' '.join(missing)}")
 
@@ -265,33 +277,44 @@ class Tester:
             capture_output=True, text=True
         )
         combined = r2.stdout + r2.stderr
-        relink_pat = re.compile(r'\b(cc|gcc|g\+\+|clang\+\+|clang)\b', re.IGNORECASE)
+        relink_pat = re.compile(r'\b(cc|gcc|g\+\+|clang\+\+|clang)\b',
+                                re.IGNORECASE)
         if r2.returncode == 0 and not relink_pat.search(combined):
             self.ok("Makefile: no relink on repeated 'make'")
         else:
             self.fail("Makefile: relink detected on second 'make'",
-                      detail="second 'make' produced compiler invocations or failed")
+                      detail="second 'make' produced compiler invocations or "
+                      "failed")
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     # Category 1: Invalid arguments
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     def cat1_invalid_args(self) -> None:
         self.section("Category 1: Invalid arguments")
 
         # Too few arguments
         self.assert_non_zero("Too few args (0 args)")
         self.assert_non_zero("Too few args (3 args)", 3, 800, 200)
-        self.assert_non_zero("Too few args (7 args)", 4, 800, 200, 100, 50, 3, 0)
+        self.assert_non_zero("Too few args (7 args)", 4, 800, 200, 100, 50, 3,
+                             0)
 
         # Negative / zero values
-        self.assert_non_zero("Negative number_of_coders",   -1, 800, 200, 100, 50, 3,  0,  "fifo")
-        self.assert_non_zero("Negative time_to_burnout",     2,  -1, 200, 100, 50, 3,  0,  "fifo")
-        self.assert_non_zero("Negative time_to_compile",     2, 800,  -1, 100, 50, 3,  0,  "fifo")
-        self.assert_non_zero("Negative time_to_debug",       2, 800, 200,  -1, 50, 3,  0,  "fifo")
-        self.assert_non_zero("Negative time_to_refactor",    2, 800, 200, 100, -1, 3,  0,  "fifo")
-        self.assert_non_zero("Negative number_of_compiles",  2, 800, 200, 100, 50, -1, 0,  "fifo")
-        self.assert_non_zero("Negative dongle_cooldown",     2, 800, 200, 100, 50, 3,  -1, "fifo")
-        self.assert_non_zero("Zero number_of_coders",        0, 800, 200, 100, 50, 3,  0,  "fifo")
+        self.assert_non_zero("Negative number_of_coders",   -1, 800, 200, 100,
+                             50, 3,  0,  "fifo")
+        self.assert_non_zero("Negative time_to_burnout",     2,  -1, 200, 100,
+                             50, 3,  0,  "fifo")
+        self.assert_non_zero("Negative time_to_compile",     2, 800,  -1, 100,
+                             50, 3,  0,  "fifo")
+        self.assert_non_zero("Negative time_to_debug",       2, 800, 200,  -1,
+                             50, 3,  0,  "fifo")
+        self.assert_non_zero("Negative time_to_refactor",    2, 800, 200, 100,
+                             -1, 3,  0,  "fifo")
+        self.assert_non_zero("Negative number_of_compiles",  2, 800, 200, 100,
+                             50, -1, 0,  "fifo")
+        self.assert_non_zero("Negative dongle_cooldown",     2, 800, 200, 100,
+                             50, 3,  -1, "fifo")
+        self.assert_non_zero("Zero number_of_coders",        0, 800, 200, 100,
+                             50, 3,  0,  "fifo")
 
         # Invalid scheduler string
         self.assert_non_zero("Invalid scheduler 'round_robin'",
@@ -302,32 +325,37 @@ class Tester:
                              4, 800, 200, 100, 50, 3, 0, "random")
 
         # Non-integer arguments
-        self.assert_non_zero("Non-integer coders 'abc'",  "abc", 800, 200, 100, 50, 3, 0, "fifo")
-        self.assert_non_zero("Non-integer burnout '1.5'",  2, "1.5", 200, 100, 50, 3, 0, "fifo")
-        self.assert_non_zero("Non-integer compile 'two'",  2,  800, "two", 100, 50, 3, 0, "fifo")
+        self.assert_non_zero("Non-integer coders 'abc'",  "abc", 800, 200,
+                             100, 50, 3, 0, "fifo")
+        self.assert_non_zero("Non-integer burnout '1.5'",  2, "1.5", 200,
+                             100, 50, 3, 0, "fifo")
+        self.assert_non_zero("Non-integer compile 'two'",  2,  800, "two",
+                             100, 50, 3, 0, "fifo")
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     # Category 2: Single coder
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     def cat2_single_coder(self) -> None:
         self.section("Category 2: Single coder")
         args = (1, 400, 200, 100, 50, 3, 0, "fifo")
         astr = self.fmt(*args)
         _, out = self.run(*args)
         if "burned out" in out:
-            self.ok("1 coder burns out (only 1 dongle available, needs 2)", astr)
+            self.ok("1 coder burns out (only 1 dongle available, needs 2)",
+                    astr)
         else:
-            self.fail("1 coder did NOT burn out — expected burnout (1 dongle, needs 2)", astr)
+            self.fail("1 coder did NOT burn out — expected burnout (1 dongle,"
+                      "needs 2)", astr)
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     # Category 3: Basic cases without burnout
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     def cat3_basic(self) -> None:
         self.section("Category 3: Basic cases without burnout")
         for n_coders, sched in ((2, "fifo"), (4, "edf")):
             args = (n_coders, 2000, 200, 100, 50, 2, 0, sched)
             astr = self.fmt(*args)
-            _, out  = self.run(*args)
+            _, out = self.run(*args)
             _, ents = self.parse_log(out)
             lbl = f"{n_coders} coders {sched}"
 
@@ -337,7 +365,8 @@ class Tester:
                 self.fail(f"{lbl}: unexpected burnout", astr)
 
             all_compiled = all(
-                sum(1 for _, c, s in ents if c == cid and s == "is compiling") >= 2
+                sum(1 for _, c, s in ents if c == cid and s == "is compiling"
+                    ) >= 2
                 for cid in range(1, n_coders + 1)
             )
             if all_compiled:
@@ -345,27 +374,29 @@ class Tester:
             else:
                 self.fail(f"{lbl}: not all coders compiled enough times", astr)
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     # Category 4: Expected burnout
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     def cat4_burnout(self) -> None:
         self.section("Category 4: Expected burnout")
         args = (4, 150, 300, 150, 100, 5, 0, "fifo")
         astr = self.fmt(*args)
         _, out = self.run(*args)
         if "burned out" in out:
-            self.ok("Expected burnout occurs (burnout=150 ms, compile=300 ms)", astr)
+            self.ok("Expected burnout occurs (burnout=150 ms, compile=300 ms)",
+                    astr)
         else:
-            self.fail("Expected burnout did NOT occur (burnout=150 ms, compile=300 ms)", astr)
+            self.fail("Expected burnout did NOT occur (burnout=150 ms, "
+                      "compile=300 ms)", astr)
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     # Category 5: Log format verification
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     def cat5_log_format(self) -> None:
         self.section("Category 5: Log format verification")
         args = (3, 2000, 300, 150, 100, 2, 0, "fifo")
         astr = self.fmt(*args)
-        _, out       = self.run(*args)
+        _, out = self.run(*args)
         all_valid, ents = self.parse_log(out)
 
         # 5a — line format
@@ -384,10 +415,12 @@ class Tester:
         # 5c — exactly 2 dongles before each compile
         err = self.check_dongle_before_compile(ents)
         if err is None:
-            self.ok("Log format: every 'is compiling' preceded by exactly 2 'has taken a dongle'",
+            self.ok("Log format: every 'is compiling' preceded by exactly 2 "
+                    "'has taken a dongle'",
                     astr)
         else:
-            self.fail("Log format: dongle-count before compile is not exactly 2", astr, err)
+            self.fail("Log format: dongle-count before compile is not exactly "
+                      "2", astr, err)
 
         # 5d — no garbage lines
         bad = sum(
@@ -397,53 +430,60 @@ class Tester:
         if bad == 0:
             self.ok("Log format: no mixed or garbage lines", astr)
         else:
-            self.fail("Log format: mixed/garbage lines detected", astr, f"{bad} invalid line(s)")
+            self.fail("Log format: mixed/garbage lines detected", astr,
+                      f"{bad} invalid line(s)")
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     # Category 6: Burnout timing precision
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     def cat6_burnout_precision(self) -> None:
         burnout_ms = 400
-        self.section(f"Category 6: Burnout timing precision (±{self.tolerance} ms)")
+        self.section(f"Category 6: Burnout timing precision "
+                     f"(±{self.tolerance} ms)")
         args = (1, burnout_ms, 200, 100, 50, 3, 0, "fifo")
         astr = self.fmt(*args)
-        _, out  = self.run(*args)
+        _, out = self.run(*args)
         _, ents = self.parse_log(out)
 
-        burnout_ts_list = [ts for ts, _, state in ents if state == "burned out"]
+        burnout_ts_list = [ts for ts, _,
+                           state in ents if state == "burned out"]
         if not burnout_ts_list:
-            self.fail("Burnout precision: no 'burned out' in log — cannot measure precision", astr)
+            self.fail("Burnout precision: no 'burned out' in log — cannot "
+                      "measure precision", astr)
             return
         if not ents:
             self.fail("Burnout precision: log is empty", astr)
             return
 
-        first_ts   = ents[0][0]
+        first_ts = ents[0][0]
         burnout_ts = burnout_ts_list[-1]
-        delta      = burnout_ts - first_ts
-        diff       = abs(delta - burnout_ms)
+        delta = burnout_ts - first_ts
+        diff = abs(delta - burnout_ms)
         if diff <= self.tolerance:
             self.ok(
-                f"Burnout precision: delta={delta} ms, expected={burnout_ms} ms "
+                f"Burnout precision: delta={delta} ms, "
+                f"expected={burnout_ms} ms "
                 f"(diff={diff} ms ≤ {self.tolerance} ms)",
                 astr,
             )
         else:
             self.fail(
-                f"Burnout precision: delta={delta} ms, expected={burnout_ms} ms "
+                f"Burnout precision: delta={delta} ms, expected="
+                f"{burnout_ms} ms "
                 f"(diff={diff} ms > {self.tolerance} ms)",
                 astr,
             )
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     # Category 7: Dongle cooldown
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     def cat7_cooldown(self) -> None:
         cooldown_ms = 200
-        self.section(f"Category 7: Dongle cooldown (cooldown={cooldown_ms} ms)")
+        self.section(f"Category 7: Dongle cooldown (cooldown="
+                     f"{cooldown_ms} ms)")
         args = (2, 5000, 300, 150, 100, 3, cooldown_ms, "fifo")
         astr = self.fmt(*args)
-        _, out  = self.run(*args)
+        _, out = self.run(*args)
         _, ents = self.parse_log(out)
 
         violation: Optional[str] = None
@@ -470,12 +510,13 @@ class Tester:
                 astr,
             )
         else:
-            self.fail("Dongle cooldown: premature dongle re-acquisition detected",
+            self.fail("Dongle cooldown: premature dongle re-acquisition "
+                      "detected",
                       astr, violation)
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     # Category 8: fifo vs edf schedulers
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     def cat8_schedulers(self) -> None:
         self.section("Category 8: fifo vs edf schedulers")
         for sched in ("fifo", "edf"):
@@ -495,13 +536,15 @@ class Tester:
                 self.fail(f"Scheduler {sched}: log format is invalid", astr)
 
             if rc != 124:
-                self.ok(f"Scheduler {sched}: simulation finishes within {self.timeout}s", astr)
+                self.ok(f"Scheduler {sched}: simulation finishes within "
+                        f"{self.timeout}s", astr)
             else:
-                self.fail(f"Scheduler {sched}: simulation timed out after {self.timeout}s", astr)
+                self.fail(f"Scheduler {sched}: simulation timed out after "
+                          f"{self.timeout}s", astr)
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     # Category 9: Memory leaks (valgrind)
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     def cat9_valgrind(self) -> None:
         self.section("Category 9: Memory leaks (valgrind)")
 
@@ -553,47 +596,57 @@ class Tester:
         ind_lost = _lost_bytes(r'indirectly lost:\s+([\d,]+) bytes')
 
         if def_lost == 0 and ind_lost == 0:
-            self.ok("Valgrind: no heap leaks (definitely/indirectly lost = 0)", astr)
+            self.ok("Valgrind: no heap leaks (definitely/indirectly lost = 0)",
+                    astr)
         else:
-            detail = f"definitely lost={def_lost} B, indirectly lost={ind_lost} B"
+            detail = f"definitely lost={def_lost} B, indirectly lost="
+            f"{ind_lost} B"
             self.fail("Valgrind: heap leaks detected", astr, detail)
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     # Category 10: Stop condition
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     def cat10_stop_condition(self) -> None:
-        self.section("Category 10: Stop condition (number_of_compiles_required)")
+        self.section("Category 10: Stop condition "
+                     "(number_of_compiles_required)")
         required = 3
         n_coders = 2
         args = (n_coders, 5000, 200, 100, 50, required, 0, "fifo")
         astr = self.fmt(*args)
-        _, out  = self.run(*args)
+        _, out = self.run(*args)
         _, ents = self.parse_log(out)
 
         # 10a — no burnout
         if "burned out" not in out:
             self.ok("Stop condition: simulation stopped without burnout", astr)
         else:
-            self.fail("Stop condition: unexpected burnout with generous timings", astr)
+            self.fail("Stop condition: unexpected burnout with generous "
+                      "timings", astr)
 
         # 10b — all coders reached their compile goal
         all_met = all(
-            sum(1 for _, c, s in ents if c == cid and s == "is compiling") >= required
+            sum(1 for _, c, s in ents if c == cid and s == "is compiling"
+                ) >= required
             for cid in range(1, n_coders + 1)
         )
         if all_met:
-            self.ok(f"Stop condition: all coders compiled >= {required} times", astr)
+            self.ok(f"Stop condition: all coders compiled >= {required} times",
+                    astr)
         else:
-            self.fail(f"Stop condition: some coders did not reach {required} compiles", astr)
+            self.fail(f"Stop condition: some coders did not reach {required} "
+                      f"compiles", astr)
 
-        # 10c — simulation did not overshoot (at most required+1 compiles per coder)
+        # 10c — simulation did not overshoot (at most required+1 compiles per
+        # coder)
         max_expected = required + 1
         overflow = any(
-            sum(1 for _, c, s in ents if c == cid and s == "is compiling") > max_expected
+            sum(1 for _, c, s in ents if c == cid and s == "is compiling"
+                ) > max_expected
             for cid in range(1, n_coders + 1)
         )
         if not overflow:
-            self.ok("Stop condition: simulation terminated promptly after goal was reached", astr)
+            self.ok("Stop condition: simulation terminated promptly after goal"
+                    " was reached", astr)
         else:
             self.fail(
                 "Stop condition: coders compiled far too many times "
@@ -601,17 +654,18 @@ class Tester:
                 astr,
             )
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     # Category 11: Phase timing precision
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     def cat11_timing_precision(self) -> None:
-        self.section(f"Category 11: Phase timing precision (±{self.tolerance} ms)")
-        compile_ms  = 300
-        debug_ms    = 150
+        self.section(f"Category 11: Phase timing precision (±{self.tolerance} "
+                     f"ms)")
+        compile_ms = 300
+        debug_ms = 150
         refactor_ms = 100
         args = (2, 5000, compile_ms, debug_ms, refactor_ms, 2, 0, "fifo")
         astr = self.fmt(*args)
-        _, out  = self.run(*args)
+        _, out = self.run(*args)
         _, ents = self.parse_log(out)
 
         # Group entries by coder
@@ -633,10 +687,6 @@ class Tester:
                 elif s0 == "is debugging":
                     debug_diffs.append(abs(dur - debug_ms))
                 elif s0 == "is refactoring":
-                    # Refactoring is usually followed by taking a dongle, which might wait for available dongles.
-                    # Thus, the duration from "refactoring" to the next action could be longer than refactor_ms.
-                    # We will only record it if the next state is not "has taken a dongle" to be safe,
-                    # or we record (dur - refactor_ms) maxing at 0 if dur >= refactor_ms.
                     if s1 != "has taken a dongle":
                         refactor_diffs.append(abs(dur - refactor_ms))
                     else:
@@ -660,7 +710,8 @@ class Tester:
             avg_diff = sum(diffs) / len(diffs)
             label = (
                 f"Phase timing: {phase} duration ≈ {expected} ms "
-                f"(max diff={max_diff} ms, avg={avg_diff:.1f} ms, samples={len(diffs)})"
+                f"(max diff={max_diff} ms, avg={avg_diff:.1f} ms, "
+                f"samples={len(diffs)})"
             )
             if max_diff <= self.tolerance:
                 self.ok(label, astr)
@@ -671,35 +722,40 @@ class Tester:
                     f"max diff {max_diff} ms > tolerance {self.tolerance} ms",
                 )
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     # Run all categories
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     def run_all(self) -> None:
         # ── Step 0: build ────────────────────────────────────────────────────
         if self.repo:
             self.section("Step 0: Build")
             try:
                 mk_found = any(
-                    (Path(self.repo) / n).exists() for n in ("Makefile", "makefile")
+                    (Path(self.repo) / n).exists() for n in ("Makefile",
+                                                             "makefile")
                 )
                 if mk_found:
-                    r = subprocess.run(["make", "--no-print-directory", "-s", "-C", self.repo], capture_output=True)
+                    r = subprocess.run(["make", "--no-print-directory", "-s",
+                                        "-C", self.repo], capture_output=True)
                     if r.returncode == 0:
                         self.ok("make succeeded")
                     else:
-                        self.fail("make failed — subsequent tests may not be meaningful")
+                        self.fail("make failed — subsequent tests may not "
+                                  "be meaningful")
                 else:
-                    print(f"{YELLOW}No Makefile found in {self.repo} — skipping build step{RESET}")
+                    print(f"{YELLOW}No Makefile found in {self.repo} — "
+                          f"skipping build step{RESET}")
             except Exception as e:
                 self.fail("Build step failed with an error", detail=str(e))
         else:
             self.section("Step 0: Build")
-            print(f"{YELLOW}Target is a binary file — skipping build step{RESET}")
+            print(f"{YELLOW}Target is a binary file — "
+                  f"skipping build step{RESET}")
 
         if not os.path.exists(self.binary):
             print(f"{RED}Binary '{self.binary}' not found.{RESET}")
             sys.exit(1)
-            
+
         if not os.access(self.binary, os.X_OK):
             print(f"{RED}Binary '{self.binary}' is not executable.{RESET}")
             sys.exit(1)
@@ -718,14 +774,15 @@ class Tester:
             self.cat10_stop_condition()
             self.cat11_timing_precision()
         except Exception as e:
-            print(f"\n{RED}An error occurred during tests execution: {e}{RESET}")
+            print(f"\n{RED}An error occurred during tests execution: "
+                  f"{e}{RESET}")
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     # Final summary
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     def print_summary(self) -> None:
         total = self.pass_n + self.fail_n + self.skip_n
-        bar   = "═" * 45
+        bar = "═" * 45
         print(f"\n{BOLD}{bar}{RESET}")
         print(f"{BOLD}  RESULTS: {self.pass_n}/{total} tests passed{RESET}")
         if self.skip_n:
@@ -747,9 +804,9 @@ class Tester:
             print(f"{GREEN}  All tests passed! 🎉{RESET}")
         print(f"{BOLD}{bar}{RESET}")
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     # JSON report
-    # ══════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════════════════════
     def write_report(self, path: str) -> None:
         data = {
             "summary": {
@@ -773,7 +830,7 @@ class Tester:
         print(f"\nReport written to: {path}")
 
 
-# ─── Entry point ──────────────────────────────────────────────────────────────
+# ─── Entry point ─────────────────────────────────────────────────────────────
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Codexion project tester (Python)",
@@ -782,11 +839,13 @@ def main() -> None:
     )
     parser.add_argument(
         "target", nargs="?", default=".",
-        help="Path to the repository directory or directly to the binary file (default: '.')",
+        help="Path to the repository directory or directly to the binary file "
+        "(default: '.')",
     )
     parser.add_argument(
         "--name", default="codexion",
-        help="Name of the binary to test if a directory is given (default: 'codexion')",
+        help="Name of the binary to test if a directory is given (default: "
+        "'codexion')",
     )
     parser.add_argument(
         "--report", default=None, metavar="FILE",
@@ -803,7 +862,7 @@ def main() -> None:
     args = parser.parse_args()
 
     target_path = os.path.abspath(args.target)
-    
+
     if os.path.isfile(target_path):
         repo_path = None
         binary_path = target_path
@@ -811,7 +870,8 @@ def main() -> None:
         repo_path = target_path
         binary_path = os.path.join(repo_path, args.name)
     else:
-        print(f"{RED}Error: Target path '{target_path}' is not a valid file or directory.{RESET}")
+        print(f"{RED}Error: Target path '{target_path}' is not a valid file or"
+              f" directory.{RESET}")
         sys.exit(1)
 
     try:
@@ -829,6 +889,7 @@ def main() -> None:
     except Exception as e:
         print(f"\n{RED}An unexpected error occurred: {e}{RESET}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
