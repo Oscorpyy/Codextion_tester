@@ -723,6 +723,45 @@ class Tester:
                 )
 
     # ═════════════════════════════════════════════════════════════════════════
+    # Category 12: Stress tests
+    # ═════════════════════════════════════════════════════════════════════════
+    def cat12_stress(self) -> None:
+        self.section("Category 12: Stress tests (longer runs)")
+        stress_tests = [
+            (2, 410, 100, 100, 100, 2, 100, "edf"),
+            (4, 4100, 1000, 1000, 1000, 3, 1000, "edf"),
+            (4, 200, 60, 60, 60, 4, 0, "edf"),
+            (10, 410, 100, 100, 100, 10, 100, "edf"),
+            (200, 650, 100, 100, 100, 10, 100, "edf")
+        ]
+
+        for args in stress_tests:
+            astr = self.fmt(*args)
+            rc, out = self.run(*args)
+            all_valid, _ = self.parse_log(out)
+
+            label_timeout = "Stress test: simulation finishes within timeout"
+            f" ({args[0]} coders {args[-1]})"
+            if rc != 124:
+                self.ok(label_timeout, astr)
+            else:
+                self.fail(label_timeout, astr)
+
+            label_format = f"Stress test: log format is valid ({args[0]} "
+            f"coders {args[-1]})"
+            if all_valid:
+                self.ok(label_format, astr)
+            else:
+                self.fail(label_format, astr)
+
+            label_burnout = f"Stress test: no burnout ({args[0]} coders "
+            f"{args[-1]})"
+            if "burned out" not in out:
+                self.ok(label_burnout, astr)
+            else:
+                self.fail(label_burnout, astr)
+
+    # ═════════════════════════════════════════════════════════════════════════
     # Run all categories
     # ═════════════════════════════════════════════════════════════════════════
     def run_all(self) -> None:
@@ -773,6 +812,7 @@ class Tester:
             self.cat9_valgrind()
             self.cat10_stop_condition()
             self.cat11_timing_precision()
+            self.cat12_stress()
         except Exception as e:
             print(f"\n{RED}An error occurred during tests execution: "
                   f"{e}{RESET}")

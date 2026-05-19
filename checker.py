@@ -65,7 +65,18 @@ def compile_project() -> bool:
         print("✅ Compilation OK")
     else:
         print("❌ Compilation Failed")
-    return res
+        return False
+
+    print("📏 Checking Norminette...")
+    norm_res = run(["norminette", "-R", "CheckForbiddenSourceHeader", "."],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if norm_res:
+        print("✅ Norminette OK")
+    else:
+        print("❌ Norminette Failed")
+        return False
+
+    return True
 
 
 # ⏱️ Vérification des durées strictes
@@ -162,6 +173,7 @@ def valgrind_tests() -> None:
     with open(VAL_LOG, "w") as log:
         for args in TESTS:
             log.write(f"\n===== {' '.join(args)} =====\n")
+            log.flush()
             subprocess.run([
                 "valgrind",
                 "--leak-check=full",
@@ -177,9 +189,11 @@ def helgrind_tests() -> None:
     with open(HEL_LOG, "w") as log:
         for args in TESTS:
             log.write(f"\n===== {' '.join(args)} =====\n")
+            log.flush()
             subprocess.run([
                 "valgrind",
                 "--tool=helgrind",
+                "-s",
                 EXECUTABLE
             ] + args, stdout=subprocess.DEVNULL, stderr=log)
 

@@ -81,3 +81,10 @@ stop_condition|Stop condition (2 coders, 3 compiles required)|2 5000 200 100 50 
 
 # ── Category 11: Phase timing precision (±tolerance ms) ──────────────────────
 phase_timing|Phase timing precision (compile=300 debug=150 refactor=100)|2 5000 300 150 100 2 0 fifo
+
+# ── Category 12: Stress tests ─────────────────────────────────────────
+no_burnout|2 coders edf|2 410 100 100 100 2 100 edf
+no_burnout|4 coders edf|4 4100 1000 1000 1000 3 1000 edf
+no_burnout|4 coders edf|4 200 60 60 60 4 0 edf
+no_burnout|10 coders edf|10 410 100 100 100 10 100 edf
+no_burnout|200 coders edf|200 650 100 100 100 10 100 edf
